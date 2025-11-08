@@ -5,74 +5,109 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Компоненты распределённой системы — облако тегов</title>
   <style>
+    :root { --pad: 40px; }
+    * { box-sizing: border-box; }
     body {
       font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-      background: #f9fafb;
-      margin: 0;
-      padding: 40px;
-      text-align: center;
+      background: #f3f4f6;
+      margin: 0; padding: var(--pad);
+      text-align: center; color:#111827;
     }
-    h1 { color: #111827; }
-    #cloud {
-      width: 90%;
-      height: 70vh;
-      margin: 40px auto;
+    h1 { margin: 0 0 10px; font-weight: 800; }
+    p  { margin: 0 0 24px; color:#4b5563; }
+    .card {
+      width: min(1000px, 92vw);
+      margin: 0 auto;
       background: #fff;
       border-radius: 20px;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+      box-shadow: 0 12px 28px rgba(0,0,0,.10);
+      padding: 18px;
     }
-    footer { color: #6b7280; margin-top: 20px; font-size: 14px; }
+    .holder {
+      width: 100%; aspect-ratio: 3 / 2; /* 3:2 */
+      display: grid; place-items: center;
+    }
+    object, img {
+      width: 100%; height: 100%;
+      border-radius: 16px;
+    }
+    .hint { color:#6b7280; font-size: 14px; margin-top: 12px; }
+    .error { color:#b91c1c; }
   </style>
 </head>
 <body>
   <h1>Компоненты распределённой системы</h1>
-  <p>Интерактивное облако тегов, построенное прямо в браузере.</p>
-  <div id="cloud"></div>
-  <footer>Создано с помощью WordCloud2.js</footer>
+  <p>Облако тегов без потери качества (SVG). Если SVG не найден — будет PNG.</p>
 
-  <!-- Подключаем библиотеку -->
-  <script src="https://cdn.jsdelivr.net/npm/wordcloud@1.2.2/src/wordcloud2.js"></script>
+  <div class="card">
+    <div class="holder" id="holder">
+      <!-- Сюда динамически подставится <object> (SVG) или <img> (PNG) -->
+    </div>
+    <div class="hint" id="status">Загрузка…</div>
+  </div>
 
   <script>
-    // список тегов с "весами"
-    const words = [
-      ['Сервер', 90],
-      ['Клиент', 80],
-      ['Репликация', 70],
-      ['Кластер', 65],
-      ['Мониторинг', 60],
-      ['Контейнер', 55],
-      ['API', 50],
-      ['Процесс', 48],
-      ['Очередь', 45],
-      ['Брокер', 44],
-      ['База данных', 60],
-      ['Балансировщик', 68],
-      ['Кэш', 52],
-      ['Виртуальная машина', 58],
-      ['Журнал', 42],
-      ['Шина сообщений', 56],
-      ['Служба', 50],
-      ['Маршрутизатор', 48],
-      ['Коммутатор', 46],
-      ['Обработчик', 47]
-    ];
+    // 👉 Укажи здесь свои имена файлов (лежать в корне репозитория):
+    const CANDIDATES_SVG = ["cloud.svg", "image.svg", "wordcloud.svg"];
+    const CANDIDATES_PNG = ["image.png", "cloud.png", "wordcloud.png"];
 
-    // функция для отрисовки облака
-    const canvas = document.createElement('canvas');
-    document.getElementById('cloud').appendChild(canvas);
+    const holder = document.getElementById('holder');
+    const status = document.getElementById('status');
 
-    WordCloud(canvas, {
-      list: words,
-      gridSize: Math.round(16 * (window.devicePixelRatio || 1)),
-      weightFactor: size => Math.pow(size, 1.1),
-      fontFamily: 'Roboto, Arial, sans-serif',
-      color: () => '#' + Math.floor(Math.random()*16777215).toString(16),
-      backgroundColor: '#ffffff',
-      rotateRatio: 0.3,
-      rotationSteps: 2,
-      drawOutOfBound: false
-    });
+    function tryLoad(src, isSvg) {
+      return new Promise((resolve, reject) => {
+        if (isSvg) {
+          const obj = document.createElement('object');
+          obj.type = "image/svg+xml";
+          obj.data = "./" + src;
+          obj.style.display = 'none';
+          obj.onload = () => resolve({el: obj, src});
+          obj.onerror = () => reject(src);
+          // таймаут на случай тихих ошибок
+          setTimeout(() => reject(src), 3000);
+          holder.appendChild(obj);
+        } else {
+          const img = new Image();
+          img.src = "./" + src;
+          img.style.display = 'none';
+          img.onload = () => resolve({el: img, src});
+          img.onerror = () => reject(src);
+          // таймаут
+          setTimeout(() => reject(src), 3000);
+        }
+      });
+    }
+
+    async function loadBest() {
+      status.textContent = "wordcloud_topic1.csv";
+      // Пробуем SVG по списку имён
+      for (const name of CANDIDATES_SVG) {
+        try {
+          const {el, src} = await tryLoad(name, true);
+          el.style.display = '';
+          holder.innerHTML = '';
+          holder.appendChild(el);
+          status.textContent = "Показан SVG: " + src;
+          return;
+        } catch(e) { /* продолжаем */ }
+      }
+      status.textContent = "SVG не найден. Пробуем PNG…";
+      // Фолбэк на PNG
+      for (const name of CANDIDATES_PNG) {
+        try {
+          const {el, src} = await tryLoad(name, false);
+          el.style.display = '';
+          holder.innerHTML = '';
+          holder.appendChild(el);
+          status.textContent = "Показан PNG: " + src;
+          return;
+        } catch(e) { /* продолжаем */ }
+      }
+      status.innerHTML = '<span class="error">Не удалось найти файл. Положи в корень один из: '
+        + [...CANDIDATES_SVG, ...CANDIDATES_PNG].join(', ') + '</span>';
+    }
+
+    loadBest();
   </script>
 </body>
 </html>
