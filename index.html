@@ -1,125 +1,109 @@
 <!doctype html>
 <html lang="ru">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Компоненты распределённой системы — облако тегов</title>
   <style>
-    :root { --w: min(1100px, 94vw); }
-    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:#f5f7fb; color:#0f172a; }
-    header, main { width: var(--w); margin: 0 auto; padding: 24px 16px; text-align: center; }
-    h1 { margin: 8px 0 6px; font-weight: 800; }
-    .card { background:#fff; border-radius: 20px; box-shadow: 0 12px 28px rgba(0,0,0,.08); padding: 16px; }
-    #cloud { width: 100%; height: 70vh; border-radius: 16px; }
-    .bar { display:flex; gap:10px; justify-content:center; flex-wrap: wrap; margin: 10px 0 16px; }
-    button { padding: 10px 14px; border:1px solid #e5e7eb; background:#fff; border-radius: 12px; cursor:pointer; }
-    .status { color:#64748b; font-size:14px; margin-top:8px; }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: #f9fafb;
+      margin: 0;
+      padding: 40px;
+      text-align: center;
+      color: #111827;
+    }
+    h1 { margin-bottom: 0; }
+    p { color: #4b5563; }
+    #cloud {
+      width: 90%;
+      height: 70vh;
+      margin: 30px auto;
+      background: #fff;
+      border-radius: 20px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+    }
+    button {
+      padding: 10px 18px;
+      margin-top: 10px;
+      border: none;
+      border-radius: 10px;
+      background: #2563eb;
+      color: #fff;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #1d4ed8;
+    }
   </style>
 </head>
 <body>
-  <header>
-    <h1>Компоненты распределённой системы</h1>
-    <p>Облако тегов строится из файла <code>wordcloud_topic1.csv</code> (колонки: <b>tag,weight</b>).</p>
-  </header>
+  <h1>Компоненты распределённой системы</h1>
+  <p>Интерактивное облако тегов, построенное из файла <b>wordcloud_topic1.csv</b>.</p>
+  <div id="cloud"></div>
+  <button id="refresh">Перестроить облако</button>
 
-  <main class="card">
-    <div class="bar">
-      <button id="renderBtn">Построить облако</button>
-      <button id="shuffleBtn">Пересобрать</button>
-      <button id="downloadBtn">Скачать PNG</button>
-    </div>
-    <div id="cloud"></div>
-    <div class="status" id="status">Ожидаю загрузку…</div>
-  </main>
-
-  <!-- Библиотеки из CDN -->
+  <!-- Подключаем библиотеки -->
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/wordcloud@1.2.2/src/wordcloud2.js"></script>
 
   <script>
-    const CSV_FILE = 'wordcloud_topic1.csv'; // <-- твой файл
+    const CSV_FILE = 'wordcloud_topic1.csv';
+    const container = document.getElementById('cloud');
+    const button = document.getElementById('refresh');
+    let words = [];
 
-    const cloudEl = document.getElementById('cloud');
-    const renderBtn = document.getElementById('renderBtn');
-    const shuffleBtn = document.getElementById('shuffleBtn');
-    const downloadBtn = document.getElementById('downloadBtn');
-    const statusEl = document.getElementById('status');
-
-    let lastList = null; // кэш списка слов
-    let canvas = null;
-
-    function loadCSV(url) {
+    async function loadCSV() {
       return new Promise((resolve, reject) => {
-        Papa.parse(url, {
+        Papa.parse(CSV_FILE, {
           download: true,
-          header: true,          // ожидаем колонки tag,weight
-          encoding: "UTF-8",
+          header: true,
+          encoding: 'UTF-8',
           complete: (res) => resolve(res.data),
-          error: (err) => reject(err)
+          error: reject
         });
       });
     }
 
-    function toList(rows) {
-      return rows
-        .filter(r => r.tag && r.weight && !isNaN(Number(r.weight)))
-        .map(r => [String(r.tag), Number(r.weight)])
-        .sort((a,b) => b[1]-a[1]);
+    function toList(data) {
+      return data
+        .filter(r => r.tag && r.weight)
+        .map(r => [r.tag, Number(r.weight)]);
     }
 
-    function draw(list) {
-      // очищаем контейнер и создаём canvas заново
-      cloudEl.innerHTML = '';
-      canvas = document.createElement('canvas');
-      canvas.width = cloudEl.clientWidth;
-      canvas.height = cloudEl.clientHeight;
-      cloudEl.appendChild(canvas);
-
+    function drawCloud(list) {
+      container.innerHTML = '';
+      const canvas = document.createElement('canvas');
+      canvas.width = container.clientWidth;
+      canvas.height = container.clientHeight;
+      container.appendChild(canvas);
       WordCloud(canvas, {
         list,
         gridSize: Math.round(16 * (window.devicePixelRatio || 1)),
-        weightFactor: s => Math.pow(s, 1.05),
+        weightFactor: size => Math.pow(size, 1.1),
+        fontFamily: 'system-ui, Arial',
+        color: () => '#' + Math.floor(Math.random() * 16777215).toString(16),
+        backgroundColor: '#ffffff',
         rotateRatio: 0.3,
         rotationSteps: 2,
-        backgroundColor: '#ffffff',
-        drawOutOfBound: false,
-        shrinkToFit: true
       });
     }
 
-    async function render() {
-      statusEl.textContent = 'Загружаю CSV…';
+    async function init() {
       try {
-        const rows = await loadCSV(CSV_FILE);
-        lastList = toList(rows);
-        if (!lastList.length) throw new Error('В CSV нет данных (нужны колонки tag,weight).');
-        draw(lastList);
-        statusEl.textContent = 'Готово: визуализация из ' + CSV_FILE;
-      } catch (e) {
-        statusEl.textContent = 'Ошибка: ' + (e.message || e);
+        const data = await loadCSV();
+        words = toList(data);
+        drawCloud(words);
+      } catch (err) {
+        container.innerHTML = '<p style="color:red">Ошибка загрузки CSV: ' + err + '</p>';
       }
     }
 
-    // события
-    renderBtn.addEventListener('click', render);
-    shuffleBtn.addEventListener('click', () => lastList && draw(lastList));
-    downloadBtn.addEventListener('click', () => {
-      if (!canvas) return;
-      const a = document.createElement('a');
-      a.download = 'wordcloud_topic1.png';
-      a.href = canvas.toDataURL('image/png');
-      a.click();
+    button.addEventListener('click', () => {
+      if (words.length) drawCloud(words);
     });
 
-    // первая отрисовка
-    render();
-
-    // ресайз — перерисовать
-    window.addEventListener('resize', () => {
-      if (!lastList) return;
-      clearTimeout(window.__wcTimer);
-      window.__wcTimer = setTimeout(() => draw(lastList), 300);
-    });
+    init();
   </script>
 </body>
 </html>
